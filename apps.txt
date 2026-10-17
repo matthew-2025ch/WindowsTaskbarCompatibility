@@ -1,7 +1,5 @@
 # One process name per line; .exe is optional. Changes apply within 2 seconds.
 # Find process names in Task Manager > Details. Lines starting with # are ignored.
 ChatGPT.exe
-snow-shot.exe
 snow_shot.exe
-snowshot.exe
 ocam.exe

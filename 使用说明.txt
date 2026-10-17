@@ -8,7 +8,7 @@
 这是后台兼容工具，不是对原软件安装文件的补丁。
 每 0.5 秒检查这些软件的可见顶层窗口，使用微软文档说明的 NonRudeHWND 窗口属性，
 阻止 Windows 将它们作为应压住任务栏的全屏窗口处理，并刷新任务栏状态。
-窗口重建后通常在下一次检查时应用。默认处理 ChatGPT、snow-shot、snow_shot、snowshot、ocam 进程。
+窗口重建后通常在下一次检查时应用。默认处理 ChatGPT、snow_shot、ocam 进程。
 可在同文件夹的 apps.txt 中添加其他进程名，每行一个，例如 example.exe；无需修改程序。
 大小写不限，.exe 后缀可省略。保存后约 2 秒内生效；删除一行会撤销该软件的兼容标记。
 可右击工具托盘图标，选择 Edit application list 打开名单。配置出错时保留上次有效名单。
@@ -31,8 +31,3 @@ Remove-TaskbarCompatibility.cmd：删除开机启动快捷方式，并退出修�
 来源
 https://learn.microsoft.com/en-us/windows/win32/api/shobjidl_core/nf-shobjidl_core-itaskbarlist2-markfullscreenwindow
 https://github.com/openai/codex/issues/52877
-
-验证记录
-当前 Windows 10 上，用户已确认对当前 Codex 窗口应用标记后，最大化和切换窗口后的鼠标触底唤出均恢复。
-后台工具已通过 Windows PowerShell 编译、启动、退出、重新启动检查。
-用户已确认后台工具运行时，Snow Shot 完整屏幕录制期间任务栏也能通过鼠标触底正常弹出。
