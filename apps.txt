@@ -2,4 +2,4 @@
 # Find process names in Task Manager > Details. Lines starting with # are ignored.
 ChatGPT.exe
 snow_shot.exe
-ocam.exe
+oCam.exe
