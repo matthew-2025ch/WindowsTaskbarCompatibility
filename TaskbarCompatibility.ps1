@@ -37,6 +37,23 @@ public static class TaskbarCompatibility {
   void HrInit(); void AddTab(IntPtr h); void DeleteTab(IntPtr h); void ActivateTab(IntPtr h); void SetActiveAlt(IntPtr h);
   void MarkFullscreenWindow(IntPtr h, [MarshalAs(UnmanagedType.Bool)] bool fullscreen);
  }
+ public static HashSet<string> ReadApplicationNames(string content) {
+  HashSet<string> result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+  int lineNumber = 0;
+  using (StringReader reader = new StringReader(content)) {
+   string line;
+   while ((line = reader.ReadLine()) != null) {
+    lineNumber++;
+    string name = line.Trim();
+    if (name.Length == 0 || name.StartsWith("#")) continue;
+    if (name.EndsWith(".exe",StringComparison.OrdinalIgnoreCase)) name = name.Substring(0,name.Length-4).Trim();
+    if (name.Length == 0 || name.IndexOfAny(new char[] {'\\','/',':','*','?','"','<','>','|'}) >= 0)
+     throw new FormatException("Invalid application name on line " + lineNumber);
+    result.Add(name);
+   }
+  }
+  return result;
+ }
  sealed class Context : ApplicationContext {
   readonly Dictionary<IntPtr,uint> windows = new Dictionary<IntPtr,uint>();
   readonly System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer();
@@ -44,23 +61,33 @@ public static class TaskbarCompatibility {
   readonly EventWaitHandle stop;
   readonly ITaskbarList2 taskbar;
   readonly string statusPath;
+  readonly string configPath;
+  HashSet<string> targets = ReadApplicationNames("chatgpt\nsnow-shot\nsnow_shot\nsnowshot\nocam");
+  string lastConfig, configError = "";
+  int configRevision;
   readonly Dictionary<uint,string> processNames = new Dictionary<uint,string>();
   IntPtr lastForeground = IntPtr.Zero;
   int applied, errors, ticks;
   string lastError = "";
-  bool restored;
-  public Context(EventWaitHandle stopEvent, string status) {
-   stop = stopEvent; statusPath = status;
+  bool restored, scanning;
+  public Context(EventWaitHandle stopEvent, string status, string config) {
+   stop = stopEvent; statusPath = status; configPath = config;
    taskbar = (ITaskbarList2)new TaskbarList(); taskbar.HrInit();
    tray.Icon = SystemIcons.Application;
-   tray.Text = "Codex / Snow Shot taskbar compatibility";
+   tray.Text = "Windows taskbar compatibility";
    ContextMenuStrip menu = new ContextMenuStrip();
+   menu.Items.Add("Edit application list", null, delegate {
+    try { Process.Start("notepad.exe", "\"" + configPath + "\""); } catch { configError = "Cannot open application list"; }
+   });
    menu.Items.Add("Exit and undo compatibility fix", null, delegate { ExitThread(); });
    tray.ContextMenuStrip = menu; tray.Visible = true;
    timer.Interval = 500;
    timer.Tick += delegate {
     if (stop.WaitOne(0)) { ExitThread(); return; }
+    if (scanning) return;
+    scanning = true;
     try { Scan(); } catch (Exception ex) { errors++; lastError = "Scan:" + ex.GetType().Name + ":" + ex.HResult; }
+    finally { scanning = false; }
    };
    Scan(); timer.Start();
   }
@@ -72,7 +99,17 @@ public static class TaskbarCompatibility {
     catch { name = ""; }
     processNames[pid] = name;
    }
-   return name == "chatgpt" || name == "snow-shot" || name == "snow_shot" || name == "snowshot" || name == "ocam";
+   return targets.Contains(name);
+  }
+  bool ReloadConfiguration() {
+   try {
+    string content = File.ReadAllText(configPath);
+    HashSet<string> next;
+    if (content == lastConfig) { configError = ""; return false; }
+    next = ReadApplicationNames(content);
+    targets = next; lastConfig = content; configRevision++; configError = "";
+    return true;
+   } catch (Exception ex) { configError = "Application list: " + ex.GetType().Name; return false; }
   }
   void Reset(IntPtr h) { try { taskbar.MarkFullscreenWindow(h,false); } catch (Exception ex) { errors++; lastError = "Reset:" + ex.HResult; } }
   void RaiseTaskbars() {
@@ -85,11 +122,18 @@ public static class TaskbarCompatibility {
   }
   void Scan() {
    if (ticks % 20 == 0) processNames.Clear();
-   bool changed = false;
+   bool changed = ticks % 4 == 0 && ReloadConfiguration();
    List<IntPtr> gone = new List<IntPtr>();
    foreach (KeyValuePair<IntPtr,uint> entry in windows) {
     uint current; GetWindowThreadProcessId(entry.Key,out current);
     if (!IsWindow(entry.Key) || current != entry.Value || GetProp(entry.Key,Owned) == IntPtr.Zero) gone.Add(entry.Key);
+    else {
+     uint targetPid;
+     if (!IsTarget(entry.Key,out targetPid)) {
+      RemoveProp(entry.Key,Owned); RemoveProp(entry.Key,Property); Reset(entry.Key);
+      gone.Add(entry.Key); changed = true;
+     }
+    }
    }
    foreach(IntPtr h in gone) windows.Remove(h);
    EnumWindows(delegate(IntPtr h,IntPtr unused) {
@@ -113,7 +157,7 @@ public static class TaskbarCompatibility {
   }
   void SaveStatus() {
    try {
-    File.WriteAllText(statusPath,"{\"pid\":" + Process.GetCurrentProcess().Id + ",\"managedWindows\":" + windows.Count + ",\"applied\":" + applied + ",\"errors\":" + errors + ",\"lastError\":\"" + lastError + "\",\"updatedUtc\":\"" + DateTime.UtcNow.ToString("o") + "\"}");
+    File.WriteAllText(statusPath,"{\"pid\":" + Process.GetCurrentProcess().Id + ",\"managedWindows\":" + windows.Count + ",\"applied\":" + applied + ",\"errors\":" + errors + ",\"lastError\":\"" + lastError + "\",\"configuredApplications\":" + targets.Count + ",\"configRevision\":" + configRevision + ",\"configError\":\"" + configError + "\",\"updatedUtc\":\"" + DateTime.UtcNow.ToString("o") + "\"}");
    } catch {}
   }
   void Restore() {
@@ -131,21 +175,25 @@ public static class TaskbarCompatibility {
   protected override void ExitThreadCore() { Restore(); base.ExitThreadCore(); }
   protected override void Dispose(bool disposing) { if(disposing) Restore(); base.Dispose(disposing); }
  }
- public static void Run(string statusPath, int sessionId) {
+ public static void Run(string statusPath, int sessionId, string configPath) {
   bool created;
   using(Mutex mutex = new Mutex(true,"Local\\CodexSnowTaskbarFix-" + sessionId,out created)) {
    if (!created) return;
    try {
     using(EventWaitHandle stop = new EventWaitHandle(false,EventResetMode.ManualReset,"Local\\CodexSnowTaskbarFixStop-" + sessionId)) {
      stop.Reset(); Application.EnableVisualStyles();
-     using(Context context = new Context(stop,statusPath)) Application.Run(context);
+     using(Context context = new Context(stop,statusPath,configPath)) Application.Run(context);
     }
    } finally { mutex.ReleaseMutex(); }
   }
  }
 }
 '@
-if ($ValidateOnly) { 'Compilation OK'; exit }
+if ($ValidateOnly) {
+    $names = [TaskbarCompatibility]::ReadApplicationNames([IO.File]::ReadAllText((Join-Path $PSScriptRoot 'apps.txt')))
+    'Compilation OK; configured applications: ' + $names.Count
+    return
+}
 $runtimeDirectory = Join-Path $PSScriptRoot 'runtime'
 New-Item -ItemType Directory -Path $runtimeDirectory -Force | Out-Null
-[TaskbarCompatibility]::Run((Join-Path $runtimeDirectory 'status.json'), $sessionId)
+[TaskbarCompatibility]::Run((Join-Path $runtimeDirectory 'status.json'), $sessionId, (Join-Path $PSScriptRoot 'apps.txt'))
