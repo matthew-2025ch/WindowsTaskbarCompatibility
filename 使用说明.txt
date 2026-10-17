@@ -28,6 +28,11 @@ Remove-TaskbarCompatibility.cmd：删除开机启动快捷方式，并退出修�
 如需移动本文件夹，先运行 Remove-TaskbarCompatibility.cmd，移动后再运行 Enable-Autostart.cmd。
 运行状态存放在本文件夹的 runtime\status.json，不包含窗口标题或录屏内容。
 
+验证
+在Windows10上已确认生效：Codex最大化及切换窗口后可正常触边唤出任务栏；Snow Shot完整屏幕录制时也正常，无需缩小录制区域。后台工具已通过编译、启动、停止和重新启动检查。
+配置测试：powershell.exe -NoProfile -ExecutionPolicy Bypass -STA -File .\tools\test-configuration.ps1。
+后台工具运行时，可在上述命令末尾添加-Integration，使用屏幕外测试窗口验证新增、移除、不重启重新加载和错误配置恢复；测试会临时修改名单，并在结束后恢复。
+
 来源
 https://learn.microsoft.com/en-us/windows/win32/api/shobjidl_core/nf-shobjidl_core-itaskbarlist2-markfullscreenwindow
 https://github.com/openai/codex/issues/52877

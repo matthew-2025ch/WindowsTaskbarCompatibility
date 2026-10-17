@@ -38,7 +38,7 @@ Windows 自动隐藏任务栏兼容工具，默认启用 Codex、Snow Shot 和 o
 
 ## 验证
 
-在 Windows 10 上已由用户确认：Codex 最大化及切换窗口后可正常触边唤出任务栏；Snow Shot 完整屏幕录制时也正常，无需缩小录制区域。后台工具已通过编译、启动、停止和重新启动检查。
+在 Windows 10 上已确认生效：Codex 最大化及切换窗口后可正常触边唤出任务栏；Snow Shot 完整屏幕录制时也正常，无需缩小录制区域。后台工具已通过编译、启动、停止和重新启动检查。
 
 配置测试：`powershell.exe -NoProfile -ExecutionPolicy Bypass -STA -File .\tools\test-configuration.ps1`。
 
