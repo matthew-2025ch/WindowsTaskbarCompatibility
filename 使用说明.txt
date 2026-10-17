@@ -1,0 +1,35 @@
+任务栏兼容修复：Codex / Snow Shot / oCam
+
+用途
+修复部分窗口覆盖整屏后，Windows 自动隐藏任务栏无法通过鼠标触边唤出的问题。
+不改变窗口尺寸、录制区域、分辨率或录制文件，不需要留下底部空隙。
+
+原理与限制
+这是后台兼容工具，不是对原软件安装文件的补丁。
+每 0.5 秒检查这些软件的可见顶层窗口，使用微软文档说明的 NonRudeHWND 窗口属性，
+阻止 Windows 将它们作为应压住任务栏的全屏窗口处理，并刷新任务栏状态。
+窗口重建后通常在下一次检查时应用。只处理 ChatGPT、snow-shot、snow_shot、snowshot、ocam 进程。
+仅在当前登录账户和会话生效；其他名称的软件版本、管理员身份运行的目标软件仍需单独验证。
+真正全屏的视频或其他程序不在处理范围内，但通过这些目标软件自身打开的全屏窗口也会允许任务栏弹出。
+不模拟按键、不读取窗口标题、不联网、不修改原软件文件。
+
+日常使用
+Start-TaskbarCompatibility.cmd：启动后台修复。重复启动不会重复常驻。
+Stop-TaskbarCompatibility.cmd：退出，并移除工具添加的窗口兼容标记。
+Enable-Autostart.cmd：添加当前账户的开机启动快捷方式，并启动修复。
+Remove-TaskbarCompatibility.cmd：删除开机启动快捷方式，并退出修复。
+也可右击系统托盘中的工具图标，选择 Exit and undo compatibility fix。
+
+文件位置
+启用开机启动后，请保留本文件夹中的文件及其路径。
+如需移动本文件夹，先运行 Remove-TaskbarCompatibility.cmd，移动后再运行 Enable-Autostart.cmd。
+运行状态存放在本文件夹的 runtime\status.json，不包含窗口标题或录屏内容。
+
+来源
+https://learn.microsoft.com/en-us/windows/win32/api/shobjidl_core/nf-shobjidl_core-itaskbarlist2-markfullscreenwindow
+https://github.com/openai/codex/issues/52877
+
+验证记录
+当前 Windows 10 上，用户已确认对当前 Codex 窗口应用标记后，最大化和切换窗口后的鼠标触底唤出均恢复。
+后台工具已通过 Windows PowerShell 编译、启动、退出、重新启动检查。
+用户已确认后台工具运行时，Snow Shot 完整屏幕录制期间任务栏也能通过鼠标触底正常弹出。
