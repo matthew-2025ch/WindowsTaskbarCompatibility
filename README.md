@@ -1,4 +1,4 @@
-# WindowsTaskbarCompability
+# WindowsTaskbarCompatibility
 
 Windows 自动隐藏任务栏兼容工具，默认启用 Codex、Snow Shot 和 oCam，可添加其他软件。
 
