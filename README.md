@@ -36,12 +36,14 @@ Windows 自动隐藏任务栏兼容工具，默认启用 Codex、Snow Shot 和 o
 
 - 双击 `Start-TaskbarCompatibility.cmd` 启动，重复启动不会产生多个常驻实例。
 - 双击 `Stop-TaskbarCompatibility.cmd` 停止并移除工具添加的兼容标记。
-- 双击 `Enable-Autostart.cmd` 启用当前账户的登录自动启动。
+- 双击 `Enable-Autostart.cmd`，确认一次 Windows 授权提示后，启用当前账户以管理员权限登录自动启动，并立即运行。
 - 双击 `Remove-TaskbarCompatibility.cmd` 取消自动启动并停止工具。
 
 工具以隐藏的 Windows PowerShell 进程运行，也可通过托盘菜单退出。依赖 Windows PowerShell 5.1、.NET Framework 和 Windows 桌面会话，无需额外下载依赖。
 
-启用自动启动后请保留文件夹路径；再次迁移前先取消自动启动，在新目录重新启用。
+自动启动通过计划任务 `WindowsTaskbarCompatibility` 实现：当前用户登录后约 3 秒，以最高权限在桌面会话中运行，不保存账户密码。无需启动文件夹快捷方式，也无需每次登录确认授权。
+
+启用自动启动后请保留文件夹路径；再次迁移前先取消自动启动，在新目录重新启用。重新启用会更新本工具的任务，旧的本工具快捷方式会在确认归属后清理。移除自启动也需要管理员授权，并会停止管理员版本。
 
 ## 添加其他软件
 
@@ -56,7 +58,7 @@ Windows 自动隐藏任务栏兼容工具，默认启用 Codex、Snow Shot 和 o
 ## 文件
 
 - `TaskbarCompatibility.ps1`：后台兼容工具。
-- `Setup-TaskbarCompatibility.ps1`：安装与移除登录启动快捷方式。
+- `Setup-TaskbarCompatibility.ps1`：安装与移除管理员权限的登录计划任务。
 - `apps.txt`：支持的软件进程名单，支持自动重新加载。
 - `tools/`：初始问题定位所用诊断脚本；日常使用无需运行。
 - `runtime/status.json`：本地运行状态，已从 Git 排除。
@@ -82,7 +84,7 @@ Windows 不允许普通权限进程使用 `SetProp` 修改管理员权限窗口�
 - 如需停止管理员实例，可以使用工具托盘的退出菜单，或运行 `Stop-TaskbarCompatibility-Admin.cmd` 并确认 Windows 提示。
 - 管理员实例同样使用 `apps.txt`，不会修改录制区域。
 
-此入口不会修改现有登录启动快捷方式；登录后默认仍以普通权限启动。需要处理管理员软件时再次使用管理员入口。
+手动管理员入口不会修改自启动设置。要在登录后自动以管理员权限运行，请使用 `Enable-Autostart.cmd` 安装登录计划任务。
 
 管理员权限只能解决权限阻止的问题，具体软件的录制覆盖层仍需实际验证。
 
