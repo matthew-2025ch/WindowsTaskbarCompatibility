@@ -31,6 +31,12 @@ public static class TaskbarCompatibility {
  [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
  [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int w, int height, uint flags);
  [DllImport("user32.dll", CharSet=CharSet.Unicode)] static extern int GetClassName(IntPtr h, StringBuilder name, int size);
+ [DllImport("user32.dll", EntryPoint="GetWindowLongPtrW")] static extern IntPtr GetWindowLongPtr(IntPtr h, int index);
+ [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr h, out RECT rect);
+ [DllImport("user32.dll")] static extern IntPtr MonitorFromWindow(IntPtr h, uint flags);
+ [DllImport("user32.dll", CharSet=CharSet.Unicode)] static extern bool GetMonitorInfo(IntPtr monitor, ref MONITORINFO info);
+ [StructLayout(LayoutKind.Sequential)] struct RECT { public int Left,Top,Right,Bottom; }
+ [StructLayout(LayoutKind.Sequential)] struct MONITORINFO { public int Size; public RECT Monitor,Work; public uint Flags; }
  [ComImport, Guid("56FDF344-FD6D-11d0-958A-006097C9A090")] class TaskbarList {}
  [ComImport, Guid("602D4995-B13A-429b-A66E-1935E44F4317"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
  interface ITaskbarList2 {
@@ -54,6 +60,23 @@ public static class TaskbarCompatibility {
   }
   return result;
  }
+ public static bool IsSnowProcess(string name) {
+  return String.Equals(name,"snow_shot",StringComparison.OrdinalIgnoreCase) ||
+   String.Equals(name,"snow-shot",StringComparison.OrdinalIgnoreCase) ||
+   String.Equals(name,"snowshot",StringComparison.OrdinalIgnoreCase);
+ }
+ public static bool IsSnowRecordingBorder(string className, long extendedStyle, bool coversMonitor) {
+  const long recordingFlags = 0x08080020; // NOACTIVATE, LAYERED, TRANSPARENT
+  return coversMonitor && className.StartsWith("Qt",StringComparison.Ordinal) &&
+   (extendedStyle & recordingFlags) == recordingFlags;
+ }
+ static bool CoversMonitor(IntPtr h) {
+  RECT rect; if (!GetWindowRect(h,out rect)) return false;
+  MONITORINFO info = new MONITORINFO(); info.Size = Marshal.SizeOf(typeof(MONITORINFO));
+  if (!GetMonitorInfo(MonitorFromWindow(h,2),ref info)) return false;
+  return rect.Left <= info.Monitor.Left+2 && rect.Top <= info.Monitor.Top+2 &&
+   rect.Right >= info.Monitor.Right-2 && rect.Bottom >= info.Monitor.Bottom-2;
+ }
  sealed class Context : ApplicationContext {
   readonly Dictionary<IntPtr,uint> windows = new Dictionary<IntPtr,uint>();
   readonly System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer();
@@ -66,6 +89,8 @@ public static class TaskbarCompatibility {
   string lastConfig, configError = "";
   int configRevision;
   readonly Dictionary<uint,string> processNames = new Dictionary<uint,string>();
+  HashSet<IntPtr> snowRecordingWindows = new HashSet<IntPtr>();
+  bool snowCaptureActive;
   IntPtr lastForeground = IntPtr.Zero;
   int applied, errors, ticks;
   string lastError = "";
@@ -91,15 +116,40 @@ public static class TaskbarCompatibility {
    };
    Scan(); timer.Start();
   }
-  bool IsTarget(IntPtr h, out uint pid) {
-   GetWindowThreadProcessId(h, out pid);
+  string ProcessName(uint pid) {
    string name;
    if (!processNames.TryGetValue(pid,out name)) {
     try { using(Process p = Process.GetProcessById((int)pid)) { name = p.ProcessName.ToLowerInvariant(); } }
     catch { name = ""; }
     processNames[pid] = name;
    }
-   return targets.Contains(name);
+   return name;
+  }
+  bool IsTarget(IntPtr h, out uint pid) {
+   GetWindowThreadProcessId(h, out pid);
+   string name = ProcessName(pid);
+   return targets.Contains(name) && (!IsSnowProcess(name) ||
+    (!snowCaptureActive && snowRecordingWindows.Contains(h)));
+  }
+  bool InspectSnowWindows() {
+   HashSet<IntPtr> recording = new HashSet<IntPtr>();
+   bool capture = false;
+   EnumWindows(delegate(IntPtr h,IntPtr unused) {
+    uint pid; GetWindowThreadProcessId(h,out pid);
+    // Adopt our own markers after a restart so an old recording border is also
+    // cleaned up if its window is now hidden, selecting an area, or excluded.
+    if (GetProp(h,Owned) != IntPtr.Zero) windows[h] = pid;
+    if (!IsWindowVisible(h) || !IsSnowProcess(ProcessName(pid))) return true;
+    StringBuilder name = new StringBuilder(128); GetClassName(h,name,128);
+    long style = GetWindowLongPtr(h,-20).ToInt64();
+    if (!name.ToString().StartsWith("Qt",StringComparison.Ordinal) || !CoversMonitor(h)) return true;
+    if (IsSnowRecordingBorder(name.ToString(),style,true)) recording.Add(h);
+    else capture = true;
+    return true;
+   },IntPtr.Zero);
+   bool changed = capture != snowCaptureActive || !recording.SetEquals(snowRecordingWindows);
+   snowCaptureActive = capture; snowRecordingWindows = recording;
+   return changed;
   }
   bool ReloadConfiguration() {
    try {
@@ -123,6 +173,7 @@ public static class TaskbarCompatibility {
   void Scan() {
    if (ticks % 20 == 0) processNames.Clear();
    bool changed = ticks % 4 == 0 && ReloadConfiguration();
+   changed = InspectSnowWindows() || changed;
    List<IntPtr> gone = new List<IntPtr>();
    foreach (KeyValuePair<IntPtr,uint> entry in windows) {
     uint current; GetWindowThreadProcessId(entry.Key,out current);
@@ -152,12 +203,14 @@ public static class TaskbarCompatibility {
     if (windows.ContainsKey(foreground)) { Reset(foreground); changed = true; }
     lastForeground = foreground;
    }
-   if (changed) RaiseTaskbars();
+   // A selection/screenshot mask must remain above the taskbar. Only a verified
+   // recording border can receive the Snow Shot compatibility property.
+   if (changed && !snowCaptureActive) RaiseTaskbars();
    if (++ticks % 10 == 0 || changed) SaveStatus();
   }
   void SaveStatus() {
    try {
-    File.WriteAllText(statusPath,"{\"pid\":" + Process.GetCurrentProcess().Id + ",\"managedWindows\":" + windows.Count + ",\"applied\":" + applied + ",\"errors\":" + errors + ",\"lastError\":\"" + lastError + "\",\"configuredApplications\":" + targets.Count + ",\"configRevision\":" + configRevision + ",\"configError\":\"" + configError + "\",\"updatedUtc\":\"" + DateTime.UtcNow.ToString("o") + "\"}");
+    File.WriteAllText(statusPath,"{\"pid\":" + Process.GetCurrentProcess().Id + ",\"managedWindows\":" + windows.Count + ",\"applied\":" + applied + ",\"errors\":" + errors + ",\"lastError\":\"" + lastError + "\",\"configuredApplications\":" + targets.Count + ",\"configRevision\":" + configRevision + ",\"configError\":\"" + configError + "\",\"snowRecordingBorders\":" + snowRecordingWindows.Count + ",\"snowCaptureActive\":" + (snowCaptureActive ? "true" : "false") + ",\"updatedUtc\":\"" + DateTime.UtcNow.ToString("o") + "\"}");
    } catch {}
   }
   void Restore() {

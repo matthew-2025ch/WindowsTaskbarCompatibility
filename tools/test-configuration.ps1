@@ -12,6 +12,12 @@ foreach ($bad in @('C:\Apps\example.exe','*.exe','.exe')) {
     Assert-True $rejected ('Invalid entry accepted: ' + $bad)
 }
 'Parser checks passed'
+Assert-True ([TaskbarCompatibility]::IsSnowRecordingBorder('Qt6120QWindowToolSaveBits',0x080800A8,$true)) 'Observed recording border was not recognized'
+Assert-True (-not [TaskbarCompatibility]::IsSnowRecordingBorder('Qt6120QWindowToolSaveBits',0x000800A8,$true)) 'Area selection was mistaken for recording'
+Assert-True (-not [TaskbarCompatibility]::IsSnowRecordingBorder('Qt6120QWindowToolSaveBits',0x08080088,$true)) 'Non-transparent screenshot/toolbar was mistaken for recording'
+Assert-True (-not [TaskbarCompatibility]::IsSnowRecordingBorder('Qt6120QWindowToolSaveBits',0x080800A8,$false)) 'Small tool window was mistaken for a full-screen recording border'
+Assert-True (-not [TaskbarCompatibility]::IsSnowRecordingBorder('OtherWindow',0x080800A8,$true)) 'Other window class was mistaken for a Snow Shot border'
+'Recording state checks passed'
 if (-not $Integration) { return }
 Add-Type @'
 using System;
